@@ -71,8 +71,29 @@ def extract_server_info(row):
     if not server_url:
         return None
     
+    # 如果URL链接看起来像表头（包含中文字段名），则不采集
+    header_keywords = ['链接', '服务器', '名称', '时间', '消费', '描述', '特色']
+    if any(keyword in server_url for keyword in header_keywords):
+        return None
+    
+    # 如果URL不包含有效的协议，则不采集
+    if 'http' not in server_url:
+        return None
+    
+    # 去除URL中的参数（问号及后面的内容）
+    if '?' in server_url:
+        server_url = server_url.split('?')[0]
+    
+    # 如果服务器名称看起来像表头，则不采集
+    if any(keyword in server_name for keyword in header_keywords):
+        return None
+    
     server_type_link = cells[1].find('a')
     server_type = server_type_link.get_text(strip=True) if server_type_link else ''
+    
+    # 如果服务器类型看起来像表头，则不采集
+    if any(keyword in server_type for keyword in header_keywords):
+        return None
     
     time_element = cells[2]
     low_consumption = cells[3].get_text(strip=True)
@@ -81,6 +102,14 @@ def extract_server_info(row):
     
     # 解析时间戳
     timestamp = parse_time_to_timestamp(time_element)
+    
+    # 如果时间戳不是整数（即解析失败），则不采集
+    if not isinstance(timestamp, int):
+        return None
+    
+    # 如果时间戳为0或负数，则不采集
+    if timestamp <= 0:
+        return None
     
     # 创建唯一标识用于去重
     unique_id = f"{server_name}_{server_type}_{timestamp}"
