@@ -235,9 +235,12 @@ def extract_api_server_info(record):
         server_name = record.get('serverName', '')
         server_url = record.get('webUrl', '')
         server_type = record.get('serverType', '')
+        server_ip = record.get('serverIp', '')  # 获取serverIp字段
         low_consumption = record.get('serviceQq', '')
         description = record.get('gameIntro', '')
-        features = ''  # API中没有直接对应的字段，留空
+        
+        # 将serverIp字段的值添加到features字段中
+        features = server_ip
         
         # 处理时间字段
         time_str = record.get('startServerTime', '')
