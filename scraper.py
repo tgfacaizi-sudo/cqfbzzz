@@ -200,11 +200,11 @@ def scrape_api_data(api_url):
         # 解析JSON数据
         data = response.json()
         
-        # 检查API响应结构
-        if 'data' in data and 'records' in data['data']:
-            records = data['data']['records']
-        elif 'records' in data:
-            records = data['records']
+        # 检查API响应结构 (根据实际返回的数据结构调整)
+        if 'data' in data and 'list' in data['data']:
+            records = data['data']['list']
+        elif 'list' in data:
+            records = data['list']
         else:
             records = data if isinstance(data, list) else []
         
@@ -231,26 +231,25 @@ def extract_api_server_info(record):
     从API记录中提取服务器信息
     """
     try:
-        # 根据API返回的数据结构提取信息
-        # 这里需要根据实际的API响应结构调整
-        server_name = record.get('name', record.get('serverName', ''))
-        server_url = record.get('url', record.get('serverUrl', record.get('link', '')))
-        server_type = record.get('type', record.get('serverType', ''))
-        low_consumption = record.get('lowConsumption', record.get('consume', ''))
-        description = record.get('description', record.get('desc', ''))
-        features = record.get('features', record.get('feature', ''))
+        # 根据API返回的数据结构提取信息 (根据实际返回的数据结构调整)
+        server_name = record.get('serverName', '')
+        server_url = record.get('webUrl', '')
+        server_type = record.get('serverType', '')
+        low_consumption = record.get('serviceQq', '')
+        description = record.get('gameIntro', '')
+        features = ''  # API中没有直接对应的字段，留空
         
         # 处理时间字段
-        time_str = record.get('openTime', record.get('time', ''))
+        time_str = record.get('startServerTime', '')
         timestamp = parse_api_time(time_str)
         
         # 如果没有URL链接，则不采集这条数据
         if not server_url:
             return None
         
-        # 如果URL不包含有效的协议，则不采集
+        # 如果URL不包含有效的协议，则添加http://前缀
         if 'http' not in server_url:
-            return None
+            server_url = 'http://' + server_url
         
         # 去除URL中的参数（问号及后面的内容）
         if '?' in server_url:
