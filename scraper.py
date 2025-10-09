@@ -71,11 +71,6 @@ def extract_server_info(row):
     if not server_url:
         return None
     
-    # 如果URL链接看起来像表头（包含中文字段名），则不采集
-    header_keywords = ['链接', '服务器', '名称', '时间', '消费', '描述', '特色']
-    if any(keyword in server_url for keyword in header_keywords):
-        return None
-    
     # 如果URL不包含有效的协议，则不采集
     if 'http' not in server_url:
         return None
@@ -84,16 +79,12 @@ def extract_server_info(row):
     if '?' in server_url:
         server_url = server_url.split('?')[0]
     
-    # 如果服务器名称看起来像表头，则不采集
-    if any(keyword in server_name for keyword in header_keywords):
-        return None
+    # 进一步清理URL，确保去除可能的锚点
+    if '#' in server_url:
+        server_url = server_url.split('#')[0]
     
     server_type_link = cells[1].find('a')
     server_type = server_type_link.get_text(strip=True) if server_type_link else ''
-    
-    # 如果服务器类型看起来像表头，则不采集
-    if any(keyword in server_type for keyword in header_keywords):
-        return None
     
     time_element = cells[2]
     low_consumption = cells[3].get_text(strip=True)
@@ -114,6 +105,10 @@ def extract_server_info(row):
     # 创建唯一标识用于去重
     unique_id = f"{server_name}_{server_type}_{timestamp}"
     
+    # 检查是否为表头数据
+    if is_header_data(server_name, server_type, server_url, low_consumption, description, features):
+        return None
+    
     return {
         'unique_id': unique_id,
         'server_name': server_name,
@@ -124,6 +119,40 @@ def extract_server_info(row):
         'description': description,
         'features': features
     }
+
+def is_header_data(server_name, server_type, server_url, low_consumption, description, features):
+    """
+    判断是否为表头数据
+    """
+    # 检查是否为典型的表头格式
+    if (server_name == '服务器名称' and 
+        '链接' in server_url and 
+        server_type == '服务器类型' and 
+        low_consumption == '最低消费' and 
+        description == '描述' and 
+        features == '特色'):
+        return True
+    
+    # 定义表头关键词
+    header_keywords = ['链接', '服务器', '名称', '时间', '消费', '描述', '特色', '最低', '类型']
+    
+    # 检查各个字段是否包含表头关键词
+    fields_to_check = [server_name, server_type, server_url, low_consumption, description, features]
+    
+    # 如果超过3个字段包含表头关键词，则认为是表头数据
+    header_keyword_count = 0
+    for field in fields_to_check:
+        if any(keyword in field for keyword in header_keywords):
+            header_keyword_count += 1
+    
+    if header_keyword_count >= 3:
+        return True
+    
+    # 特殊检查：如果服务器名称和URL看起来像表头
+    if '服务器' in server_name and '链接' in server_url:
+        return True
+    
+    return False
 
 def scrape_url(url):
     """
