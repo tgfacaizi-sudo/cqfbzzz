@@ -221,9 +221,7 @@ def save_as_lines(data, filename):
     filepath = os.path.join(DATA_DIR, filename)
     
     with open(filepath, 'w', encoding='utf-8') as f:
-        # 写入表头
-        f.write("服务器名称\t服务器链接\t服务器类型\t开区时间\t最低消费\t描述\t特色\n")
-        
+        # 根据项目规范，不写入表头，只输出数据行
         for item in data:
             # 格式化时间显示
             if isinstance(item['timestamp'], int):
