@@ -301,39 +301,79 @@ def scrape_jjj_data(soup):
     try:
         # 获取页面的所有文本内容
         page_text = str(soup)
+        print(f"调试: jjj.com页面内容长度: {len(page_text)}")
         
-        # 使用正则表达式匹配o4函数调用
+        # 检查页面是否包含特定内容
+        if "o4(" in page_text:
+            print("调试: 页面中包含o4函数调用")
+        else:
+            print("调试: 页面中不包含o4函数调用")
+            # 打印页面前1000个字符进行调试
+            print(f"调试: 页面内容预览: {page_text[:1000]}...")
+            return server_data
+        
+        # 使用更简单的正则表达式匹配o4函数调用
         import re
         from bs4 import BeautifulSoup
-        pattern = r'o4\s*\(\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*\)'
-        matches = re.findall(pattern, page_text)
         
-        # 如果没有匹配到数据，尝试打印页面内容进行调试
-        if not matches:
-            print(f"警告: 在jjj.com页面中未找到o4函数调用，页面长度: {len(page_text)}")
-            # 可以取消下面这行的注释来查看页面内容（仅用于调试）
-            # print(f"页面内容预览: {page_text[:500]}...")
+        # 匹配o4函数调用，允许参数中有逗号
+        pattern = r'o4\s*\(([^)]*)\)'
+        matches = re.findall(pattern, page_text)
+        print(f"调试: 找到 {len(matches)} 个o4函数调用")
         
         for match in matches:
-            # 提取各个字段
-            server_name = match[0].strip()
-            server_url = match[1].strip()
-            server_type = match[2].strip()
-            time_text = match[3].strip()
-            low_consumption = match[4].strip()
-            description = match[5].strip()
-            features = match[6].strip()
+            # 分割参数，但要注意引号内的逗号
+            params = []
+            current_param = ""
+            in_quotes = False
+            quote_char = None
+            
+            for char in match:
+                if char in ['"', "'"] and (not in_quotes or char == quote_char):
+                    in_quotes = not in_quotes
+                    quote_char = char if in_quotes else None
+                    current_param += char
+                elif char == ',' and not in_quotes:
+                    params.append(current_param.strip())
+                    current_param = ""
+                else:
+                    current_param += char
+            
+            if current_param:
+                params.append(current_param.strip())
+            
+            # 确保有足够多的参数
+            if len(params) < 7:
+                print(f"调试: 参数不足，跳过该项。参数数量: {len(params)}")
+                continue
+            
+            # 提取各个字段并去除引号
+            server_name = params[0].strip('"\'')
+            server_url = params[1].strip('"\'')
+            server_type = params[2].strip('"\'')
+            time_text = params[3].strip('"\'')
+            low_consumption = params[4].strip('"\'')
+            description = params[5].strip('"\'')
+            features = params[6].strip('"\'')
+            
+            print(f"调试: 采集到数据 - 服务器名称: {server_name}, URL: {server_url}")
             
             # 解析时间
             time_element = BeautifulSoup(f'<td class="time">{time_text}</td>', 'lxml').td
             timestamp = parse_time_to_timestamp(time_element)
             
             # 数据验证
-            if not server_url or 'http' not in server_url:
+            if not server_url or len(server_url) < 5:
+                print(f"调试: 跳过数据，URL无效: {server_url}")
                 continue
             
             if not isinstance(timestamp, int) or timestamp <= 0:
+                print(f"调试: 跳过数据，时间戳无效: {timestamp}")
                 continue
+            
+            # 确保URL包含协议
+            if 'http' not in server_url:
+                server_url = 'http://' + server_url
             
             # 去除URL参数
             if '?' in server_url:
@@ -343,6 +383,7 @@ def scrape_jjj_data(soup):
             
             # 检查是否为表头数据
             if is_header_data(server_name, server_type, server_url, low_consumption, description, features):
+                print(f"调试: 跳过数据，识别为表头数据")
                 continue
             
             # 创建唯一标识用于去重
@@ -359,9 +400,12 @@ def scrape_jjj_data(soup):
                 'features': features
             })
         
+        print(f"调试: jjj.com总共采集到 {len(server_data)} 条数据")
         return server_data
     except Exception as e:
         print(f"采集jjj.com数据时出错: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 def parse_api_time(time_str):
