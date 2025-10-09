@@ -440,8 +440,8 @@ def scrape_jjj_data(soup):
                 print(f"调试: 跳过数据，识别为表头数据")
                 continue
             
-            # 创建唯一标识用于去重
-            unique_id = f"{server_url}_{timestamp}"
+            # 创建唯一标识用于去重，并添加jjj标记
+            unique_id = f"{server_url}_{timestamp}_jjj_"
             
             server_data.append({
                 'unique_id': unique_id,
@@ -572,23 +572,38 @@ def main():
     unique_data = deduplicate_data(all_data)
     print(f"去重后共有 {len(unique_data)} 条数据")
     
+    # 过滤出需要保存到9pk的数据（排除API数据和jjj.com数据）
+    # API数据的unique_id包含API记录的unique_id
+    # jjj.com数据的server_url包含jjj.com
+    api_unique_ids = [api_item['unique_id'] for api_item in api_data]
+    filtered_data = [item for item in unique_data 
+                    if item['unique_id'] not in api_unique_ids 
+                    and "jjj.com" not in item['server_url']]
+    
     # 保存到Markdown文件
-    save_to_markdown(unique_data, "9pk.md")
+    save_to_markdown(filtered_data, "9pk.md")
     
     # 保存为每行一条记录的格式
-    save_as_lines(unique_data, "9pk_lines.txt")
+    save_as_lines(filtered_data, "9pk.txt")
     
     # 保存API数据到30ok.txt
     if api_data:
-        api_filtered_data = [item for item in unique_data if item['unique_id'] in [api_item['unique_id'] for api_item in api_data]]
+        api_unique_ids = [api_item['unique_id'] for api_item in api_data]
+        api_filtered_data = [item for item in unique_data if item['unique_id'] in api_unique_ids]
         save_as_lines(api_filtered_data, "30ok.txt")
         print(f"API数据已保存到 30ok.txt，共 {len(api_filtered_data)} 条数据")
     
     # 保存jjj.com数据到jjj.txt
-    jjj_data = [item for item in unique_data if "jjj.com" in item['server_url']]
+    # 在采集jjj.com数据时，我们在unique_id中添加标记
+    jjj_data = [item for item in unique_data if '_jjj_' in item.get('unique_id', '')]
     if jjj_data:
         save_as_lines(jjj_data, "jjj.txt")
         print(f"jjj.com数据已保存到 jjj.txt，共 {len(jjj_data)} 条数据")
+    else:
+        print(f"jjj.com数据未找到，unique_data中共有 {len(unique_data)} 条数据")
+        # 调试：检查前几条数据的unique_id
+        for i, item in enumerate(unique_data[:5]):
+            print(f"调试数据 {i}: unique_id = {item.get('unique_id', 'N/A')}")
     
     print("采集完成!")
 
