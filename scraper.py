@@ -534,7 +534,7 @@ def save_to_markdown(data, filename):
             time_display = datetime.fromtimestamp(item['timestamp']).strftime('%Y-%m-%d %H:%M') if isinstance(item['timestamp'], int) else item['timestamp']
             f.write(f"| {item['server_name']} | {item['server_url']} | {item['server_type']} | {time_display} | {item['low_consumption']} | {item['description']} | {item['features']} |\n")
     
-    print(f"数据已保存到 {filepath}"}
+    print(f"数据已保存到 {filepath}")
 
 def save_as_lines(data, filename):
     """将数据保存为每行一条记录的格式，使用制表符分隔"""
