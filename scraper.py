@@ -63,8 +63,13 @@ def extract_server_info(row):
         return None
     
     # 提取各字段信息
-    server_name = cells[0].get_text(strip=True)
-    server_type = cells[1].get_text(strip=True)
+    server_name_link = cells[0].find('a')
+    server_name = server_name_link.get_text(strip=True) if server_name_link else ''
+    server_url = server_name_link.get('href', '') if server_name_link else ''
+    
+    server_type_link = cells[1].find('a')
+    server_type = server_type_link.get_text(strip=True) if server_type_link else ''
+    
     time_element = cells[2]
     low_consumption = cells[3].get_text(strip=True)
     description = cells[4].get_text(strip=True)
@@ -79,6 +84,7 @@ def extract_server_info(row):
     return {
         'unique_id': unique_id,
         'server_name': server_name,
+        'server_url': server_url,
         'server_type': server_type,
         'timestamp': timestamp,
         'low_consumption': low_consumption,
@@ -132,8 +138,8 @@ def save_to_markdown(data, filename):
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write("# 开区信息采集结果\n\n")
         f.write(f"采集时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-        f.write("| 服务器名称 | 服务器类型 | 开区时间 | 最低消费 | 描述 | 特色 |\n")
-        f.write("| --- | --- | --- | --- | --- | --- |\n")
+        f.write("| 服务器名称 | 服务器链接 | 服务器类型 | 开区时间 | 最低消费 | 描述 | 特色 |\n")
+        f.write("| --- | --- | --- | --- | --- | --- | --- |\n")
         
         for item in data:
             # 格式化时间显示
@@ -142,7 +148,7 @@ def save_to_markdown(data, filename):
             else:
                 time_display = item['timestamp']
             
-            f.write(f"| {item['server_name']} | {item['server_type']} | {time_display} | {item['low_consumption']} | {item['description']} | {item['features']} |\n")
+            f.write(f"| {item['server_name']} | {item['server_url']} | {item['server_type']} | {time_display} | {item['low_consumption']} | {item['description']} | {item['features']} |\n")
     
     print(f"数据已保存到 {filepath}")
 
@@ -154,7 +160,7 @@ def save_as_lines(data, filename):
     
     with open(filepath, 'w', encoding='utf-8') as f:
         # 写入表头
-        f.write("服务器名称\t服务器类型\t开区时间\t最低消费\t描述\t特色\n")
+        f.write("服务器名称\t服务器链接\t服务器类型\t开区时间\t最低消费\t描述\t特色\n")
         
         for item in data:
             # 格式化时间显示
@@ -164,7 +170,7 @@ def save_as_lines(data, filename):
                 time_display = item['timestamp']
             
             # 写入数据行，使用制表符分隔
-            f.write(f"{item['server_name']}\t{item['server_type']}\t{time_display}\t{item['low_consumption']}\t{item['description']}\t{item['features']}\n")
+            f.write(f"{item['server_name']}\t{item['server_url']}\t{item['server_type']}\t{time_display}\t{item['low_consumption']}\t{item['description']}\t{item['features']}\n")
     
     print(f"数据已保存到 {filepath} (每行一条记录格式)")
 
