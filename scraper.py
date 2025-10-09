@@ -10,7 +10,8 @@ import json
 # 目标网址
 URLS = [
     "https://zhaosf.aitingshuchang.com/",
-    "https://zhaosf.aitingshuchang.com/index2.html"
+    "https://zhaosf.aitingshuchang.com/index2.html",
+    "https://jjj.com"
 ]
 
 # 创建data目录
@@ -167,6 +168,10 @@ def scrape_url(url):
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, 'lxml')
         
+        # 为jjj.com网站使用专门的处理函数
+        if 'jjj.com' in url:
+            return scrape_jjj_data(soup)
+        
         # 查找所有开区信息的tr元素
         rows = soup.find_all('tr', attrs={'onmouseover': True})
         
@@ -286,6 +291,72 @@ def extract_api_server_info(record):
     except Exception as e:
         print(f"解析API记录时出错: {e}")
         return None
+
+def scrape_jjj_data(soup):
+    """
+    专门用于采集jjj.com网站数据的函数
+    数据格式为JavaScript函数调用: o4("服务器名称","URL","类型","时间","最低消费","描述","特色");
+    """
+    server_data = []
+    try:
+        # 获取页面的所有文本内容
+        page_text = str(soup)
+        
+        # 使用正则表达式匹配o4函数调用
+        import re
+        from bs4 import BeautifulSoup
+        pattern = r'o4\s*\(\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*\)'
+        matches = re.findall(pattern, page_text)
+        
+        for match in matches:
+            # 提取各个字段
+            server_name = match[0].strip()
+            server_url = match[1].strip()
+            server_type = match[2].strip()
+            time_text = match[3].strip()
+            low_consumption = match[4].strip()
+            description = match[5].strip()
+            features = match[6].strip()
+            
+            # 解析时间
+            time_element = BeautifulSoup(f'<td class="time">{time_text}</td>', 'lxml').td
+            timestamp = parse_time_to_timestamp(time_element)
+            
+            # 数据验证
+            if not server_url or 'http' not in server_url:
+                continue
+            
+            if not isinstance(timestamp, int) or timestamp <= 0:
+                continue
+            
+            # 去除URL参数
+            if '?' in server_url:
+                server_url = server_url.split('?')[0]
+            if '#' in server_url:
+                server_url = server_url.split('#')[0]
+            
+            # 检查是否为表头数据
+            if is_header_data(server_name, server_type, server_url, low_consumption, description, features):
+                continue
+            
+            # 创建唯一标识用于去重
+            unique_id = f"{server_url}_{timestamp}"
+            
+            server_data.append({
+                'unique_id': unique_id,
+                'server_name': server_name,
+                'server_url': server_url,
+                'server_type': server_type,
+                'timestamp': timestamp,
+                'low_consumption': low_consumption,
+                'description': description,
+                'features': features
+            })
+        
+        return server_data
+    except Exception as e:
+        print(f"采集jjj.com数据时出错: {e}")
+        return []
 
 def parse_api_time(time_str):
     """
@@ -436,6 +507,13 @@ def main():
         api_filtered_data = [item for item in unique_data if item['unique_id'] in [api_item['unique_id'] for api_item in api_data]]
         save_as_lines(api_filtered_data, "30ok.txt")
         print(f"API数据已保存到 30ok.txt，共 {len(api_filtered_data)} 条数据")
+    
+    # 保存jjj.com数据到jjj.txt
+    # 筛选出所有来自jjj.com的数据
+    jjj_data = [item for item in unique_data if "jjj.com" in item['server_url']]
+    if jjj_data:
+        save_as_lines(jjj_data, "jjj.txt")
+        print(f"jjj.com数据已保存到 jjj.txt，共 {len(jjj_data)} 条数据")
     
     print("采集完成!")
 
