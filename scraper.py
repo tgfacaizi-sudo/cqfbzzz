@@ -103,12 +103,12 @@ def extract_server_info(row):
     if timestamp <= 0:
         return None
     
-    # 创建唯一标识用于去重
-    unique_id = f"{server_name}_{server_type}_{timestamp}"
-    
     # 检查是否为表头数据
     if is_header_data(server_name, server_type, server_url, low_consumption, description, features):
         return None
+    
+    # 创建唯一标识用于去重 (根据URL和时间戳)
+    unique_id = f"{server_url}_{timestamp}"
     
     return {
         'unique_id': unique_id,
@@ -270,8 +270,8 @@ def extract_api_server_info(record):
         if timestamp <= 0:
             return None
         
-        # 创建唯一标识用于去重
-        unique_id = f"{server_name}_{server_type}_{timestamp}"
+        # 创建唯一标识用于去重 (根据URL和时间戳)
+        unique_id = f"{server_url}_{timestamp}"
         
         return {
             'unique_id': unique_id,
@@ -334,12 +334,14 @@ def parse_api_time(time_str):
 def deduplicate_data(data):
     """
     去除重复数据
+    根据时间和URL来判断重复数据，同一时间段的相同URL视为重复
     """
     unique_data = {}
     for item in data:
-        unique_id = item['unique_id']
-        if unique_id not in unique_data:
-            unique_data[unique_id] = item
+        # 使用URL和时间戳组合作为唯一标识
+        unique_key = f"{item['server_url']}_{item['timestamp']}"
+        if unique_key not in unique_data:
+            unique_data[unique_key] = item
     return list(unique_data.values())
 
 def save_to_markdown(data, filename):
@@ -429,9 +431,11 @@ def main():
     
     # 保存API数据到30ok.txt
     if api_data:
-        api_unique_data = deduplicate_data(api_data)
-        save_as_lines(api_unique_data, "30ok.txt")
-        print(f"API数据已保存到 30ok.txt，共 {len(api_unique_data)} 条数据")
+        # API数据已经包含在all_data中并经过了统一去重处理
+        # 这里筛选出所有API来源的数据
+        api_filtered_data = [item for item in unique_data if item['unique_id'] in [api_item['unique_id'] for api_item in api_data]]
+        save_as_lines(api_filtered_data, "30ok.txt")
+        print(f"API数据已保存到 30ok.txt，共 {len(api_filtered_data)} 条数据")
     
     print("采集完成!")
 
