@@ -5,6 +5,7 @@ import time
 import re
 from datetime import datetime, date
 import hashlib
+import json
 
 # 目标网址
 URLS = [
@@ -180,6 +181,148 @@ def scrape_url(url):
         print(f"采集 {url} 时出错: {e}")
         return []
 
+def scrape_api_data(api_url):
+    """
+    采集API数据
+    """
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+        }
+        
+        response = requests.get(api_url, headers=headers, timeout=10)
+        response.raise_for_status()  # 检查HTTP错误
+        
+        # 解析JSON数据
+        data = response.json()
+        
+        # 检查API响应结构
+        if 'data' in data and 'records' in data['data']:
+            records = data['data']['records']
+        elif 'records' in data:
+            records = data['records']
+        else:
+            records = data if isinstance(data, list) else []
+        
+        server_data = []
+        for record in records:
+            # 提取服务器信息
+            server_info = extract_api_server_info(record)
+            if server_info:
+                server_data.append(server_info)
+        
+        return server_data
+    except Exception as e:
+        print(f"采集API {api_url} 时出错: {e}")
+        return []
+
+def extract_api_server_info(record):
+    """
+    从API记录中提取服务器信息
+    """
+    try:
+        # 根据API返回的数据结构提取信息
+        # 这里需要根据实际的API响应结构调整
+        server_name = record.get('name', record.get('serverName', ''))
+        server_url = record.get('url', record.get('serverUrl', record.get('link', '')))
+        server_type = record.get('type', record.get('serverType', ''))
+        low_consumption = record.get('lowConsumption', record.get('consume', ''))
+        description = record.get('description', record.get('desc', ''))
+        features = record.get('features', record.get('feature', ''))
+        
+        # 处理时间字段
+        time_str = record.get('openTime', record.get('time', ''))
+        timestamp = parse_api_time(time_str)
+        
+        # 如果没有URL链接，则不采集这条数据
+        if not server_url:
+            return None
+        
+        # 如果URL不包含有效的协议，则不采集
+        if 'http' not in server_url:
+            return None
+        
+        # 去除URL中的参数（问号及后面的内容）
+        if '?' in server_url:
+            server_url = server_url.split('?')[0]
+        
+        # 进一步清理URL，确保去除可能的锚点
+        if '#' in server_url:
+            server_url = server_url.split('#')[0]
+        
+        # 如果时间戳不是整数（即解析失败），则不采集
+        if not isinstance(timestamp, int):
+            return None
+        
+        # 如果时间戳为0或负数，则不采集
+        if timestamp <= 0:
+            return None
+        
+        # 创建唯一标识用于去重
+        unique_id = f"{server_name}_{server_type}_{timestamp}"
+        
+        return {
+            'unique_id': unique_id,
+            'server_name': server_name,
+            'server_url': server_url,
+            'server_type': server_type,
+            'timestamp': timestamp,
+            'low_consumption': low_consumption,
+            'description': description,
+            'features': features
+        }
+    except Exception as e:
+        print(f"解析API记录时出错: {e}")
+        return None
+
+def parse_api_time(time_str):
+    """
+    解析API时间字符串
+    """
+    if not time_str:
+        return int(datetime.now().timestamp())
+    
+    try:
+        # 尝试多种时间格式
+        if isinstance(time_str, str):
+            # 尝试解析时间戳字符串
+            if time_str.isdigit():
+                return int(time_str)
+            
+            # 尝试解析常见的时间格式
+            time_formats = [
+                '%Y-%m-%d %H:%M:%S',
+                '%Y-%m-%d %H:%M',
+                '%Y-%m-%d',
+                '%m月%d日/%H:%M',
+                '%m-%d %H:%M'
+            ]
+            
+            for fmt in time_formats:
+                try:
+                    if '%Y' not in fmt:
+                        # 如果没有年份，假设是当前年份
+                        current_year = datetime.now().year
+                        time_obj = datetime.strptime(time_str, fmt).replace(year=current_year)
+                    else:
+                        time_obj = datetime.strptime(time_str, fmt)
+                    return int(time_obj.timestamp())
+                except ValueError:
+                    continue
+        
+        # 如果是数字类型，直接返回
+        if isinstance(time_str, (int, float)):
+            return int(time_str)
+        
+        # 默认返回当前时间戳
+        return int(datetime.now().timestamp())
+    except Exception:
+        return int(datetime.now().timestamp())
+
 def deduplicate_data(data):
     """
     去除重复数据
@@ -257,6 +400,13 @@ def main():
         all_data.extend(data)
         print(f"从 {url} 采集到 {len(data)} 条数据")
     
+    # 采集API数据
+    api_url = "https://k-4-5.fhjkwerv.com:9001/api/gameAd/getList"
+    print(f"正在采集API: {api_url}")
+    api_data = scrape_api_data(api_url)
+    all_data.extend(api_data)
+    print(f"从API采集到 {len(api_data)} 条数据")
+    
     # 去重
     unique_data = deduplicate_data(all_data)
     print(f"去重后共有 {len(unique_data)} 条数据")
@@ -266,6 +416,12 @@ def main():
     
     # 保存为每行一条记录的格式
     save_as_lines(unique_data, "9pk_lines.txt")
+    
+    # 保存API数据到30ok.txt
+    if api_data:
+        api_unique_data = deduplicate_data(api_data)
+        save_as_lines(api_unique_data, "30ok.txt")
+        print(f"API数据已保存到 30ok.txt，共 {len(api_unique_data)} 条数据")
     
     print("采集完成!")
 
