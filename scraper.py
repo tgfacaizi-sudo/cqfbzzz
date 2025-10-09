@@ -194,7 +194,7 @@ def scrape_api_data(api_url):
             'Connection': 'keep-alive',
         }
         
-        response = requests.get(api_url, headers=headers, timeout=10)
+        response = requests.get(api_url, headers=headers, timeout=15)  # 增加超时时间
         response.raise_for_status()  # 检查HTTP错误
         
         # 解析JSON数据
@@ -216,6 +216,12 @@ def scrape_api_data(api_url):
                 server_data.append(server_info)
         
         return server_data
+    except requests.exceptions.RequestException as e:
+        print(f"网络请求错误: {e}")
+        return []
+    except json.JSONDecodeError as e:
+        print(f"JSON解析错误: {e}")
+        return []
     except Exception as e:
         print(f"采集API {api_url} 时出错: {e}")
         return []
@@ -404,8 +410,10 @@ def main():
     api_url = "https://k-4-5.fhjkwerv.com:9001/api/gameAd/getList"
     print(f"正在采集API: {api_url}")
     api_data = scrape_api_data(api_url)
-    all_data.extend(api_data)
     print(f"从API采集到 {len(api_data)} 条数据")
+    
+    # 将API数据添加到总数据中
+    all_data.extend(api_data)
     
     # 去重
     unique_data = deduplicate_data(all_data)
