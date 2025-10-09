@@ -197,7 +197,12 @@ def save_to_markdown(data, filename):
     """
     filepath = os.path.join(DATA_DIR, filename)
     
+    # 先清空文件内容
     with open(filepath, 'w', encoding='utf-8') as f:
+        pass  # 清空文件内容
+    
+    # 写入数据
+    with open(filepath, 'a', encoding='utf-8') as f:
         f.write("# 开区信息采集结果\n\n")
         f.write(f"采集时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         f.write("| 服务器名称 | 服务器链接 | 服务器类型 | 开区时间 | 最低消费 | 描述 | 特色 |\n")
@@ -220,7 +225,12 @@ def save_as_lines(data, filename):
     """
     filepath = os.path.join(DATA_DIR, filename)
     
+    # 先清空文件内容
     with open(filepath, 'w', encoding='utf-8') as f:
+        pass  # 清空文件内容
+    
+    # 写入数据
+    with open(filepath, 'a', encoding='utf-8') as f:
         # 根据项目规范，不写入表头，只输出数据行
         for item in data:
             # 格式化时间显示
