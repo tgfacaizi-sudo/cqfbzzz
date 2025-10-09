@@ -67,6 +67,10 @@ def extract_server_info(row):
     server_name = server_name_link.get_text(strip=True) if server_name_link else ''
     server_url = server_name_link.get('href', '') if server_name_link else ''
     
+    # 如果没有URL链接，则不采集这条数据
+    if not server_url:
+        return None
+    
     server_type_link = cells[1].find('a')
     server_type = server_type_link.get_text(strip=True) if server_type_link else ''
     
