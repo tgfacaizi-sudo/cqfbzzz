@@ -308,6 +308,12 @@ def scrape_jjj_data(soup):
         pattern = r'o4\s*\(\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*\)'
         matches = re.findall(pattern, page_text)
         
+        # 如果没有匹配到数据，尝试打印页面内容进行调试
+        if not matches:
+            print(f"警告: 在jjj.com页面中未找到o4函数调用，页面长度: {len(page_text)}")
+            # 可以取消下面这行的注释来查看页面内容（仅用于调试）
+            # print(f"页面内容预览: {page_text[:500]}...")
+        
         for match in matches:
             # 提取各个字段
             server_name = match[0].strip()
