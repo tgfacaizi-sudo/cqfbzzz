@@ -1,10 +1,8 @@
 import requests
 from bs4 import BeautifulSoup
 import os
-import time
 import re
 from datetime import datetime, date
-import hashlib
 import json
 
 # 目标网址
@@ -16,52 +14,37 @@ URLS = [
 
 # 创建data目录
 DATA_DIR = "data"
-if not os.path.exists(DATA_DIR):
-    os.makedirs(DATA_DIR)
+os.makedirs(DATA_DIR, exist_ok=True)
 
 def chinese_to_num(chinese_str):
-    """
-    将中文数字转换为阿拉伯数字
-    """
+    """将中文数字转换为阿拉伯数字"""
+    if isinstance(chinese_str, int):
+        return chinese_str
+    if isinstance(chinese_str, str) and chinese_str.isdigit():
+        return int(chinese_str)
+    if not chinese_str:
+        return 0
+    
     # 中文数字映射
     chinese_map = {
         '零': 0, '一': 1, '二': 2, '三': 3, '四': 4,
-        '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10
+        '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+        '十一': 11, '十二': 12, '十三': 13, '十四': 14, '十五': 15,
+        '十六': 16, '十七': 17, '十八': 18, '十九': 19, '二十': 20
     }
     
-    # 如果已经是数字，直接返回
-    if chinese_str.isdigit():
-        return int(chinese_str)
-    
-    # 处理简单的中文数字
     if chinese_str in chinese_map:
         return chinese_map[chinese_str]
     
-    # 处理复合数字（如十一、十二等）
-    if chinese_str == '十一':
-        return 11
-    elif chinese_str == '十二':
-        return 12
-    
-    # 默认返回原字符串的数字值或0
-    try:
-        return int(chinese_str)
-    except:
-        return 0
+    # 尝试提取字符串中的数字
+    numbers = re.findall(r'\d+', chinese_str)
+    return int(numbers[0]) if numbers else 0
 
 def parse_time_to_timestamp(time_element):
-    """
-    解析时间元素并转换为时间戳
-    支持多种格式:
-    1. <td class="time">10月10日/13:00</td>
-    2. <td class="time color1">今日14:00</td>
-    3. <td class='time'><span style='color:#008910'>★★精品全天推荐★★</span></td>
-    4. <td class="time">10月10日/13点30分</td>
-    5. <td class="time">10月10日/13点开放</td>
-    """
+    """解析时间元素并转换为时间戳"""
     time_text = time_element.get_text(strip=True)
     
-    # 格式3: 精品全天推荐，不更改
+    # 格式1: 精品全天推荐，不更改
     if "精品全天推荐" in time_text:
         return time_text
     
@@ -73,8 +56,27 @@ def parse_time_to_timestamp(time_element):
         dt = datetime.combine(today, time_obj)
         return int(dt.timestamp())
     
-    # 格式1: 月日/时分 (支持中文格式)
-    # 匹配类似 "10月9日/9点30分" 或 "10月9日/9点开放" 的格式
+    # 格式3: 月日/时分 (支持中文格式)
+    # 首先尝试提取数字
+    time_matches = re.findall(r'(\d+)', time_text)
+    if len(time_matches) >= 2:
+        try:
+            # 假设前两个数字是月和日
+            month = int(time_matches[0])
+            day = int(time_matches[1])
+            
+            # 尝试提取小时和分钟
+            hour = int(time_matches[2]) if len(time_matches) > 2 else 0
+            minute = int(time_matches[3]) if len(time_matches) > 3 else 0
+            
+            # 假设是当前年份
+            current_year = datetime.now().year
+            dt = datetime(current_year, month, day, hour, minute)
+            return int(dt.timestamp())
+        except (ValueError, IndexError):
+            pass
+    
+    # 如果数字提取失败，尝试原始的正则表达式方法
     match = re.match(r"(\d+)月(\d+)日[/\s]*([\d零一二三四五六七八九十]+)[点时]([\d零一二三四五六七八九十]*)", time_text)
     if not match:
         # 尝试匹配 "10月9日/9点开放" 格式
@@ -106,9 +108,7 @@ def parse_time_to_timestamp(time_element):
     return time_text
 
 def extract_server_info(row):
-    """
-    从表格行中提取服务器信息
-    """
+    """从表格行中提取服务器信息"""
     cells = row.find_all('td')
     if len(cells) < 7:
         return None
@@ -118,21 +118,12 @@ def extract_server_info(row):
     server_name = server_name_link.get_text(strip=True) if server_name_link else ''
     server_url = server_name_link.get('href', '') if server_name_link else ''
     
-    # 如果没有URL链接，则不采集这条数据
-    if not server_url:
+    # 验证数据
+    if not server_url or 'http' not in server_url:
         return None
     
-    # 如果URL不包含有效的协议，则不采集
-    if 'http' not in server_url:
-        return None
-    
-    # 去除URL中的参数（问号及后面的内容）
-    if '?' in server_url:
-        server_url = server_url.split('?')[0]
-    
-    # 进一步清理URL，确保去除可能的锚点
-    if '#' in server_url:
-        server_url = server_url.split('#')[0]
+    # 清理URL
+    server_url = server_url.split('?')[0].split('#')[0]
     
     server_type_link = cells[1].find('a')
     server_type = server_type_link.get_text(strip=True) if server_type_link else ''
@@ -145,19 +136,15 @@ def extract_server_info(row):
     # 解析时间戳
     timestamp = parse_time_to_timestamp(time_element)
     
-    # 如果时间戳不是整数（即解析失败），则不采集
-    if not isinstance(timestamp, int):
-        return None
-    
-    # 如果时间戳为0或负数，则不采集
-    if timestamp <= 0:
+    # 验证时间戳
+    if not isinstance(timestamp, int) or timestamp <= 0:
         return None
     
     # 检查是否为表头数据
     if is_header_data(server_name, server_type, server_url, low_consumption, description, features):
         return None
     
-    # 创建唯一标识用于去重 (根据URL和时间戳)
+    # 创建唯一标识用于去重
     unique_id = f"{server_url}_{timestamp}"
     
     return {
@@ -172,9 +159,7 @@ def extract_server_info(row):
     }
 
 def is_header_data(server_name, server_type, server_url, low_consumption, description, features):
-    """
-    判断是否为表头数据
-    """
+    """判断是否为表头数据"""
     # 检查是否为典型的表头格式
     if (server_name == '服务器名称' and 
         '链接' in server_url and 
@@ -191,10 +176,7 @@ def is_header_data(server_name, server_type, server_url, low_consumption, descri
     fields_to_check = [server_name, server_type, server_url, low_consumption, description, features]
     
     # 如果超过3个字段包含表头关键词，则认为是表头数据
-    header_keyword_count = 0
-    for field in fields_to_check:
-        if any(keyword in field for keyword in header_keywords):
-            header_keyword_count += 1
+    header_keyword_count = sum(1 for field in fields_to_check if any(keyword in field for keyword in header_keywords))
     
     if header_keyword_count >= 3:
         return True
@@ -206,15 +188,19 @@ def is_header_data(server_name, server_type, server_url, low_consumption, descri
     return False
 
 def scrape_url(url):
-    """
-    采集单个URL的数据
-    """
+    """采集单个URL的数据"""
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         response = requests.get(url, headers=headers, timeout=10)
-        response.encoding = 'utf-8'
+        
+        # 为jjj.com网站设置正确的编码
+        if 'jjj.com' in url:
+            response.encoding = 'gb2312'
+        else:
+            response.encoding = 'utf-8'
+        
         soup = BeautifulSoup(response.text, 'lxml')
         
         # 为jjj.com网站使用专门的处理函数
@@ -224,13 +210,7 @@ def scrape_url(url):
         # 查找所有开区信息的tr元素
         rows = soup.find_all('tr', attrs={'onmouseover': True})
         
-        server_data = []
-        for row in rows:
-            info = extract_server_info(row)
-            if info:
-                server_data.append(info)
-        
-        return server_data
+        return [info for info in (extract_server_info(row) for row in rows) if info]
     except Exception as e:
         print(f"采集 {url} 时出错: {e}")
         return []
@@ -361,15 +341,6 @@ def scrape_jjj_data(soup):
             print(f"调试: 页面内容预览: {page_text[:1000]}...")
             return server_data
         
-        # 尝试处理字符编码问题
-        try:
-            page_text = page_text.encode('utf-8').decode('utf-8')
-        except:
-            try:
-                page_text = page_text.encode('gbk').decode('gbk')
-            except:
-                pass  # 保持原样
-        
         # 使用更简单的正则表达式匹配o4函数调用
         import re
         from bs4 import BeautifulSoup
@@ -378,6 +349,14 @@ def scrape_jjj_data(soup):
         pattern = r'o4\s*\(([^)]*)\)'
         matches = re.findall(pattern, page_text)
         print(f"调试: 找到 {len(matches)} 个o4函数调用")
+                    
+        # 如果没有找到匹配项，尝试在原始内容中查找
+        if not matches:
+            print("调试: 在处理后的文本中未找到匹配项，尝试在原始文本中查找")
+            original_matches = re.findall(pattern, str(soup))
+            if original_matches:
+                matches = original_matches
+                print(f"调试: 在原始文本中找到 {len(matches)} 个o4函数调用")
         
         for match in matches:
             # 分割参数，但要注意引号内的逗号
@@ -415,10 +394,12 @@ def scrape_jjj_data(soup):
             features = params[6].strip('"\'')
             
             print(f"调试: 采集到数据 - 服务器名称: {server_name}, URL: {server_url}")
+            print(f"调试: 时间文本: {time_text}")
             
             # 解析时间
             time_element = BeautifulSoup(f'<td class="time">{time_text}</td>', 'lxml').td
             timestamp = parse_time_to_timestamp(time_element)
+            print(f"调试: 初始解析时间戳: {timestamp}")
             
             # 如果时间解析失败，尝试其他方法
             if not isinstance(timestamp, int) or timestamp <= 0:
@@ -426,20 +407,23 @@ def scrape_jjj_data(soup):
                 # 直接使用parse_time_to_timestamp解析原始时间文本
                 fake_element = BeautifulSoup(f'<td class="time">{time_text}</td>', 'lxml').td
                 timestamp = parse_time_to_timestamp(fake_element)
+                print(f"调试: 重新解析时间戳: {timestamp}")
             
             # 数据验证
-            if not server_url or len(server_url) < 5 or server_url == 'b':
+            if not server_url or len(server_url) < 5 or server_url == 'b' or 'http' not in server_url:
                 print(f"调试: 跳过数据，URL无效: {server_url}")
                 continue
             
+            # 对于时间戳，即使解析失败也尝试使用当前时间
             if not isinstance(timestamp, int) or timestamp <= 0:
-                print(f"调试: 跳过数据，时间戳无效: {timestamp}")
-                # 尝试重新解析时间
-                time_element = BeautifulSoup(f'<td class="time">{time_text}</td>', 'lxml').td
-                timestamp = parse_time_to_timestamp(time_element)
-                if not isinstance(timestamp, int) or timestamp <= 0:
-                    print(f"调试: 重新解析后时间戳仍然无效: {timestamp}")
-                    continue
+                print(f"调试: 时间戳无效: {timestamp}，使用当前时间作为替代")
+                timestamp = int(datetime.now().timestamp())
+                
+            # 检查时间戳是否在合理范围内（最近30天到未来30天）
+            current_time = int(datetime.now().timestamp())
+            if timestamp < current_time - 30*24*3600 or timestamp > current_time + 30*24*3600:
+                print(f"调试: 时间戳超出合理范围: {timestamp}，使用当前时间作为替代")
+                timestamp = current_time
             
             # 确保URL包含协议
             if 'http' not in server_url:
@@ -536,62 +520,36 @@ def deduplicate_data(data):
     return list(unique_data.values())
 
 def save_to_markdown(data, filename):
-    """
-    将数据保存为Markdown格式
-    """
+    """将数据保存为Markdown格式"""
     filepath = os.path.join(DATA_DIR, filename)
     
-    # 先清空文件内容
+    # 清空并写入文件
     with open(filepath, 'w', encoding='utf-8') as f:
-        pass  # 清空文件内容
-    
-    # 写入数据
-    with open(filepath, 'a', encoding='utf-8') as f:
         f.write("# 开区信息采集结果\n\n")
         f.write(f"采集时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         f.write("| 服务器名称 | 服务器链接 | 服务器类型 | 开区时间 | 最低消费 | 描述 | 特色 |\n")
         f.write("| --- | --- | --- | --- | --- | --- | --- |\n")
         
         for item in data:
-            # 格式化时间显示
-            if isinstance(item['timestamp'], int):
-                time_display = datetime.fromtimestamp(item['timestamp']).strftime('%Y-%m-%d %H:%M')
-            else:
-                time_display = item['timestamp']
-            
+            time_display = datetime.fromtimestamp(item['timestamp']).strftime('%Y-%m-%d %H:%M') if isinstance(item['timestamp'], int) else item['timestamp']
             f.write(f"| {item['server_name']} | {item['server_url']} | {item['server_type']} | {time_display} | {item['low_consumption']} | {item['description']} | {item['features']} |\n")
     
-    print(f"数据已保存到 {filepath}")
+    print(f"数据已保存到 {filepath}"}
 
 def save_as_lines(data, filename):
-    """
-    将数据保存为每行一条记录的格式，使用制表符分隔
-    """
+    """将数据保存为每行一条记录的格式，使用制表符分隔"""
     filepath = os.path.join(DATA_DIR, filename)
     
-    # 先清空文件内容
+    # 清空并写入文件
     with open(filepath, 'w', encoding='utf-8') as f:
-        pass  # 清空文件内容
-    
-    # 写入数据
-    with open(filepath, 'a', encoding='utf-8') as f:
-        # 根据项目规范，不写入表头，只输出数据行
         for item in data:
-            # 格式化时间显示
-            if isinstance(item['timestamp'], int):
-                time_display = str(item['timestamp'])  # 保持时间戳格式
-            else:
-                time_display = item['timestamp']
-            
-            # 写入数据行，使用制表符分隔
+            time_display = str(item['timestamp']) if isinstance(item['timestamp'], int) else item['timestamp']
             f.write(f"{item['server_name']}\t{item['server_url']}\t{item['server_type']}\t{time_display}\t{item['low_consumption']}\t{item['description']}\t{item['features']}\n")
     
     print(f"数据已保存到 {filepath} (每行一条记录格式)")
 
 def main():
-    """
-    主函数
-    """
+    """主函数"""
     all_data = []
     
     # 采集所有URL的数据
@@ -622,14 +580,11 @@ def main():
     
     # 保存API数据到30ok.txt
     if api_data:
-        # API数据已经包含在all_data中并经过了统一去重处理
-        # 这里筛选出所有API来源的数据
         api_filtered_data = [item for item in unique_data if item['unique_id'] in [api_item['unique_id'] for api_item in api_data]]
         save_as_lines(api_filtered_data, "30ok.txt")
         print(f"API数据已保存到 30ok.txt，共 {len(api_filtered_data)} 条数据")
     
     # 保存jjj.com数据到jjj.txt
-    # 筛选出所有来自jjj.com的数据
     jjj_data = [item for item in unique_data if "jjj.com" in item['server_url']]
     if jjj_data:
         save_as_lines(jjj_data, "jjj.txt")
