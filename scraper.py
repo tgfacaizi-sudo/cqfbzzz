@@ -19,13 +19,45 @@ DATA_DIR = "data"
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
+def chinese_to_num(chinese_str):
+    """
+    将中文数字转换为阿拉伯数字
+    """
+    # 中文数字映射
+    chinese_map = {
+        '零': 0, '一': 1, '二': 2, '三': 3, '四': 4,
+        '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10
+    }
+    
+    # 如果已经是数字，直接返回
+    if chinese_str.isdigit():
+        return int(chinese_str)
+    
+    # 处理简单的中文数字
+    if chinese_str in chinese_map:
+        return chinese_map[chinese_str]
+    
+    # 处理复合数字（如十一、十二等）
+    if chinese_str == '十一':
+        return 11
+    elif chinese_str == '十二':
+        return 12
+    
+    # 默认返回原字符串的数字值或0
+    try:
+        return int(chinese_str)
+    except:
+        return 0
+
 def parse_time_to_timestamp(time_element):
     """
     解析时间元素并转换为时间戳
-    支持三种格式:
+    支持多种格式:
     1. <td class="time">10月10日/13:00</td>
     2. <td class="time color1">今日14:00</td>
     3. <td class='time'><span style='color:#008910'>★★精品全天推荐★★</span></td>
+    4. <td class="time">10月10日/13点30分</td>
+    5. <td class="time">10月10日/13点开放</td>
     """
     time_text = time_element.get_text(strip=True)
     
@@ -41,10 +73,27 @@ def parse_time_to_timestamp(time_element):
         dt = datetime.combine(today, time_obj)
         return int(dt.timestamp())
     
-    # 格式1: 月日/时分
-    match = re.match(r"(\d+)月(\d+)日/(\d+):(\d+)", time_text)
+    # 格式1: 月日/时分 (支持中文格式)
+    # 匹配类似 "10月9日/9点30分" 或 "10月9日/9点开放" 的格式
+    match = re.match(r"(\d+)月(\d+)日[/\s]*([\d零一二三四五六七八九十]+)[点时]([\d零一二三四五六七八九十]*)", time_text)
+    if not match:
+        # 尝试匹配 "10月9日/9点开放" 格式
+        match = re.match(r"(\d+)月(\d+)日[/\s]*([\d零一二三四五六七八九十]+)[点时](?:开放|开服)", time_text)
+        if match:
+            # 为没有分钟数的情况添加默认分钟数0
+            groups = list(match.groups())
+            if len(groups) == 3:
+                groups.append("0")
+            match = type('Match', (), {'groups': lambda: groups})()
+    
     if match:
-        month, day, hour, minute = map(int, match.groups())
+        month, day, hour, minute = match.groups()
+        # 转换中文数字为阿拉伯数字
+        month = chinese_to_num(month)
+        day = chinese_to_num(day)
+        hour = chinese_to_num(hour)
+        minute = chinese_to_num(minute) if minute else 0
+        
         # 假设是当前年份
         current_year = datetime.now().year
         try:
@@ -312,6 +361,15 @@ def scrape_jjj_data(soup):
             print(f"调试: 页面内容预览: {page_text[:1000]}...")
             return server_data
         
+        # 尝试处理字符编码问题
+        try:
+            page_text = page_text.encode('utf-8').decode('utf-8')
+        except:
+            try:
+                page_text = page_text.encode('gbk').decode('gbk')
+            except:
+                pass  # 保持原样
+        
         # 使用更简单的正则表达式匹配o4函数调用
         import re
         from bs4 import BeautifulSoup
@@ -362,14 +420,26 @@ def scrape_jjj_data(soup):
             time_element = BeautifulSoup(f'<td class="time">{time_text}</td>', 'lxml').td
             timestamp = parse_time_to_timestamp(time_element)
             
+            # 如果时间解析失败，尝试其他方法
+            if not isinstance(timestamp, int) or timestamp <= 0:
+                print(f"调试: 尝试直接解析时间文本: {time_text}")
+                # 直接使用parse_time_to_timestamp解析原始时间文本
+                fake_element = BeautifulSoup(f'<td class="time">{time_text}</td>', 'lxml').td
+                timestamp = parse_time_to_timestamp(fake_element)
+            
             # 数据验证
-            if not server_url or len(server_url) < 5:
+            if not server_url or len(server_url) < 5 or server_url == 'b':
                 print(f"调试: 跳过数据，URL无效: {server_url}")
                 continue
             
             if not isinstance(timestamp, int) or timestamp <= 0:
                 print(f"调试: 跳过数据，时间戳无效: {timestamp}")
-                continue
+                # 尝试重新解析时间
+                time_element = BeautifulSoup(f'<td class="time">{time_text}</td>', 'lxml').td
+                timestamp = parse_time_to_timestamp(time_element)
+                if not isinstance(timestamp, int) or timestamp <= 0:
+                    print(f"调试: 重新解析后时间戳仍然无效: {timestamp}")
+                    continue
             
             # 确保URL包含协议
             if 'http' not in server_url:
